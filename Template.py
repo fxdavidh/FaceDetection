@@ -1,3 +1,8 @@
+import cv2 as cv
+import os
+from matplotlib import pyplot as plt
+import numpy as np
+
 def get_path_list(root_path):
     '''
         To get a list of path directories from root path
@@ -13,6 +18,9 @@ def get_path_list(root_path):
             List containing the names of the sub-directories in the
             root directory
     '''
+    sub_dir = os.listdir(root_path)
+    
+    return sub_dir
 
 def get_class_id(root_path, train_names):
     '''
@@ -32,6 +40,21 @@ def get_class_id(root_path, train_names):
         list
             List containing all image classes id
     '''
+
+    train_images = []
+    class_indices = []
+
+    for id,train_name in enumerate(train_names):
+        path = '{}/{}'.format(root_path, train_name)
+        images = os.listdir(path)
+
+        for image in images:
+            full_path = '{}/{}'.format(path, image)
+            train_image = cv.imread(full_path)
+            train_images.append(train_image)
+            class_indices.append(id)
+    
+    return train_images, class_indices
 
 def detect_faces_and_filter(image_list, image_classes_list=None):
     '''
@@ -55,6 +78,31 @@ def detect_faces_and_filter(image_list, image_classes_list=None):
             List containing all filtered image classes id
     '''
 
+    filtered_face_images = []
+    filtered_rectangle_face_images = []
+    face_indices = []
+
+    face_detection = cv.CascadeClassifier('haarcascade_frontalface_default.xml')
+    for id, image in enumerate(image_list):
+        if not image_classes_list:
+            gray_image = image
+        else:
+            gray_image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+        faces = face_detection.detectMultiScale(gray_image, scaleFactor=1.2, minNeighbors=3)
+
+        if len(faces) > 0:
+            for face in faces:
+                x,y,w,h = face
+                filtered_face_image = gray_image[y:y+h, x:x+w]
+                filtered_face_images.append(filtered_face_image)
+                filtered_rectangle_face_images.append(face)
+                if not image_classes_list:
+                    continue
+                else:
+                    face_indices.append(image_classes_list[id])
+    
+    return filtered_face_images, filtered_rectangle_face_images, face_indices
+
 def train(train_face_grays, image_classes_list):
     '''
         To create and train face recognizer object
@@ -71,6 +119,10 @@ def train(train_face_grays, image_classes_list):
         object
             Recognizer object after being trained with cropped face images
     '''
+    model = cv.face.LBPHFaceRecognizer_create()
+    model.train(train_face_grays, np.array(image_classes_list))
+
+    return model
 
 def get_test_images_data(test_root_path):
     '''
@@ -86,7 +138,18 @@ def get_test_images_data(test_root_path):
         list
             List containing all loaded gray test images
     '''
-    
+
+    gray_images = []
+
+    images = os.listdir(test_root_path)
+
+    for id, image in enumerate(images):
+        full_path = '{}/{}'.format(test_root_path, image)
+        image = cv.imread(full_path,0)
+        gray_images.append(image)
+
+    return gray_images
+
 def predict(recognizer, test_faces_gray):
     '''
         To predict the test image with the recognizer
@@ -103,6 +166,12 @@ def predict(recognizer, test_faces_gray):
         list
             List containing all prediction results from given test faces
     '''
+    results = []
+    for face in test_faces_gray:
+        result = recognizer.predict(face)
+        results.append(result)
+    return results
+
 
 def get_verification_status(prediction_result, train_names, unverified_names):
     '''
@@ -112,7 +181,7 @@ def get_verification_status(prediction_result, train_names, unverified_names):
         ----------
         prediction_result : list
             List containing all prediction results from given test faces
-        test_image_list : list
+        train_names : list
             List containing all loaded test images
         unverified_names : list
             List containing all unverified names
@@ -122,6 +191,15 @@ def get_verification_status(prediction_result, train_names, unverified_names):
         list
             List containing all verification status from prediction results
     '''
+    status = []
+    for i,pred in enumerate(prediction_result):
+        if train_names[pred[0]] in unverified_names:
+            temp = {'name': train_names[pred[0]], 'status':'unverified'}
+            status.append(temp)
+        else:
+            temp = {'name': train_names[pred[0]], 'status':'verified'}
+            status.append(temp)
+    return status
 
 def draw_prediction_results(verification_statuses, test_image_list, test_faces_rects, train_names):
     '''
@@ -143,7 +221,17 @@ def draw_prediction_results(verification_statuses, test_image_list, test_faces_r
         list
             List containing all test images after being drawn
     '''
-    
+    drawn_images=[]
+
+    for i,image in enumerate(test_image_list):
+        x,y,w,h = test_faces_rects[i]
+        face_image = cv.rectangle(image, (x,y), (x+w, y+h), (0,0,255))
+        cv.putText(face_image, verification_statuses[i]['name'],(x, y-10), cv.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
+        cv.putText(face_image, verification_statuses[i]['status'], (x, y+20), cv.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
+        drawn_images.append(face_image)
+
+    return drawn_images
+
 def combine_and_show_result(image_list):
     '''
         To show the final image that already combined into one image
@@ -153,7 +241,13 @@ def combine_and_show_result(image_list):
         image_list : nparray
             Array containing image data
     '''
+    for i,image in enumerate(image_list):
+        plt.subplot(2, 3, i+1)
+        plt.axis('off')
+        # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+        plt.imshow(image)
 
+    plt.show()
 '''
 You may modify the code below if it's marked between
 
@@ -177,7 +271,7 @@ if __name__ == "__main__":
         Modifiable
         -------------------
     '''
-    train_root_path = "[PATH_TO_TRAIN_ROOT_DIRECTORY]"
+    train_root_path = "Dataset/Train"
     '''
         -------------------
         End of modifiable
@@ -197,8 +291,8 @@ if __name__ == "__main__":
         Modifiable
         -------------------
     '''
-    test_root_path = "[PATH_TO_TEST_ROOT_DIRECTORY]"
-    unverified_names = "[LIST OF UNVERIFIED NAMES ]"
+    test_root_path = "Dataset/Test"
+    unverified_names = ["Raditya Dika", "Anya Geraldine", "Raffi Ahmad"]
 
     '''
         -------------------
