@@ -85,7 +85,7 @@ def detect_faces_and_filter(image_list, image_classes_list=None):
     face_detection = cv.CascadeClassifier('haarcascade_frontalface_default.xml')
     for id, image in enumerate(image_list):
         if not image_classes_list:
-            gray_image = image
+            gray_image = image['gray_image']
         else:
             gray_image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
         faces = face_detection.detectMultiScale(gray_image, scaleFactor=1.2, minNeighbors=3)
@@ -145,8 +145,10 @@ def get_test_images_data(test_root_path):
 
     for id, image in enumerate(images):
         full_path = '{}/{}'.format(test_root_path, image)
-        image = cv.imread(full_path,0)
-        gray_images.append(image)
+        image = cv.imread(full_path)
+        gray_image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+        temp = {'image':image,'gray_image':gray_image}
+        gray_images.append(temp)
 
     return gray_images
 
@@ -225,10 +227,17 @@ def draw_prediction_results(verification_statuses, test_image_list, test_faces_r
 
     for i,image in enumerate(test_image_list):
         x,y,w,h = test_faces_rects[i]
-        face_image = cv.rectangle(image, (x,y), (x+w, y+h), (0,0,255))
-        cv.putText(face_image, verification_statuses[i]['name'],(x, y-10), cv.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
-        cv.putText(face_image, verification_statuses[i]['status'], (x, y+20), cv.FONT_HERSHEY_SIMPLEX, 0.9, (255,0,0), 2)
-        drawn_images.append(face_image)
+        if verification_statuses[i]['status'] == 'unverified':
+            face_image = cv.rectangle(image['image'], (x,y), (x+w, y+h), (0,0,255))
+            cv.putText(face_image, verification_statuses[i]['name'],(x, y-10), cv.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
+            cv.putText(face_image, verification_statuses[i]['status'], (x, h+y+20), cv.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
+        else:
+            face_image = cv.rectangle(image['image'], (x,y), (x+w, y+h), (0,255,0))
+            cv.putText(face_image, verification_statuses[i]['name'],(x, y-10), cv.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 3)
+            cv.putText(face_image, verification_statuses[i]['status'], (x, h+y+20), cv.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 3)
+
+        temp = {'image': face_image, 'status':verification_statuses[i]['status']}
+        drawn_images.append(temp)
 
     return drawn_images
 
@@ -241,11 +250,22 @@ def combine_and_show_result(image_list):
         image_list : nparray
             Array containing image data
     '''
-    for i,image in enumerate(image_list):
-        plt.subplot(2, 3, i+1)
-        plt.axis('off')
-        # image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-        plt.imshow(image)
+    size = 1
+    for i,data in enumerate(image_list):
+        if data['status'] == 'unverified':
+            plt.subplot(2, 3, size)
+            plt.axis('off')
+            data['image'] = cv.cvtColor(data['image'], cv.COLOR_BGR2RGB)
+            plt.imshow(data['image'])
+            size+=1
+
+    for i,data in enumerate(image_list):
+        if data['status'] == 'verified':
+            plt.subplot(2, 3, size)
+            plt.axis('off')
+            data['image'] = cv.cvtColor(data['image'], cv.COLOR_BGR2RGB)
+            plt.imshow(data['image'])
+            size+=1
 
     plt.show()
 '''
